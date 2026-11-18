@@ -2,7 +2,7 @@
 
 **Aluno(s): Guilherme Henrique**
 **Ferramenta de IA utilizada:** Claude Code
-**Unidades testadas:** `backend/src/utils/taskRules.ts` — RN01 e `backend/src/utils/normalize.ts` — RN03
+**Unidades testadas:** `backend/src/utils/taskRules.ts` — RN01, `backend/src/utils/normalize.ts` — RN03 e `frontend/src/components/Users.tsx` — RF01
 
 # RN01 — Transição de status de tarefa (`backend/src/utils/taskRules.ts`)
 
@@ -134,3 +134,49 @@ export default { test: { environment: 'node', include: ['tests/unit/normalize.te
 |-------|----------------------------|-------------------------|---------------------|
 | RN03 | — | Nenhuma divergência entre especificação e código encontrada. | — |
 | RN03 (lacuna da especificação, não defeito do código) | "Dois nomes de categoria que resultem no mesmo nome normalizado são considerados duplicados." Não há ação definida para duplicados (bloqueio, status da API, mensagem) nem indicação de onde a regra se aplica. | Não verificável: sem comportamento especificado, não há oráculo para testar o tratamento de duplicados. Apenas o critério de comparação foi testado. | `normalizeName > detecção de duplicados` (casos 18 e 19, `backend/tests/unit/normalize.test.ts`) |
+
+---
+
+# RF01 — Indicador de carregamento (`frontend/src/components/Users.tsx`)
+
+## 1. Tabela de casos
+
+| # | Entrada (estado da requisição `GET /users`) | Resultado esperado | Técnica (partição, valor-limite, inválido) | Regra |
+|---|---------------------------------------------|--------------------|--------------------------------------------|-------|
+| 1 | Requisição pendente (sem resposta) na primeira renderização | Texto "Carregando usuários..." exibido | Partição válida (carregando) | RF01 ("enquanto a lista é carregada") |
+| 2 | Requisição responde com sucesso, lista com 1 usuário | Texto "Carregando usuários..." deixa de ser exibido | Partição válida (carregamento concluído) | RF01 (o texto é exibido só "enquanto" carrega) |
+| 3 | Requisição responde com sucesso, lista vazia | Texto "Carregando usuários..." deixa de ser exibido | Valor-limite (lista vazia) | RF01 |
+| 4 | Requisição falha (promessa rejeitada) | Texto "Carregando usuários..." deixa de ser exibido | Inválido (falha da API) | RF01 (o carregamento termina também em caso de erro; a mensagem de erro em si é RF03) |
+
+## 2. Prompt utilizado
+
+```
+faça agora o rf01 do frontend e faça o relatório
+```
+
+(Prompt enviado na mesma sessão dos testes anteriores; as regras do `AGENTS.md` — não alterar `src/`, especificação como oráculo — continuaram valendo.)
+
+## 3. Revisão do teste gerado
+
+| Problema encontrado no teste gerado | Ajuste solicitado ou realizado |
+|-------------------------------------|--------------------------------|
+| Na primeira execução, 3 dos 4 testes falharam com *"Found multiple elements with the text: Carregando usuários..."*. Causa: o `vitest.config.ts` do frontend não habilita `globals`, então o Testing Library não registra o `cleanup` automático e cada `render` se acumulava no DOM do teste seguinte. Não era defeito do componente. | Corrigido pelo agente no próprio arquivo de teste com `afterEach(() => cleanup())`. Nenhuma asserção nem valor esperado foi alterado. O teste de referência `Users.error.test.tsx` não tinha o problema por ter um único teste; quem escrever novos arquivos com mais de um `render` precisa do mesmo `cleanup`. |
+| A primeira versão tinha dois testes quase idênticos para o caso 1 (um assíncrono, outro síncrono). | Removido o duplicado; ficou um único teste síncrono, que também confirma que `api.get` foi chamado uma vez. |
+| Para simular a resposta da API foi preciso usar o formato `{ data: { data: [...] } }`. A especificação não define o formato da resposta de `GET /users`; ele foi tirado do código (`response.data.data`). | Mantido: é apenas o *Arrange* do mock, não o resultado esperado. O oráculo de todos os testes (presença/ausência do texto) vem da RF01. |
+| Para controlar o momento da resposta sem `setTimeout` real, o agente criou uma promessa resolvida/rejeitada manualmente pelo teste (`criarRequisicaoPendente`). | Mantido, conforme a regra de isolamento do `AGENTS.md` (sem rede e sem temporizador real). |
+
+## 4. Resultados
+
+- Arquivo: `frontend/tests/unit/Users.loading.test.tsx`
+- Testes criados: 4 | aprovados: 4 | reprovados: 0 (suíte do frontend completa: 5 testes, 5 aprovados)
+- Cobertura de linhas da unidade (apenas os testes da RF01): 48,14 % de `src/components/Users.tsx` (ramos 50 %; funções 30,76 %). Valor esperado: a RF01 só exercita o carregamento da lista; formulário, edição e exclusão (RF04–RF06) ficam para os próximos requisitos.
+- Resultado da sabotagem manual (frontend): **não realizada pelo agente**, porque exige alterar `src/`, o que o `AGENTS.md` proíbe. Sugestão para o aluno fazer à mão e desfazer em seguida (`git checkout src/components/Users.tsx`):
+  1. trocar o texto `Carregando usuários...` por outro → o caso 1 deve falhar;
+  2. remover `setLoading(false)` do bloco `finally` → os casos 2, 3 e 4 devem falhar;
+  3. iniciar `loading` com `false` → o caso 1 deve falhar.
+
+## 5. Defeitos encontrados (divergências entre especificação e código)
+
+| Regra | Comportamento especificado | Comportamento observado | Teste que evidencia |
+|-------|----------------------------|-------------------------|---------------------|
+| RF01 | — | Nenhuma divergência entre especificação e código encontrada. | — |
